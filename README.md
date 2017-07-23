@@ -10,12 +10,7 @@ by Shaoqing Ren, Kaiming He, Ross Girshick, Jian Sun.
 
 ### Progress
 
-- [x] Forward for detecting
-- [x] RoI Pooling layer with C extensions on CPU (only forward)
-- [x] RoI Pooling layer on GPU (forward and backward)
-- [x] Training on VOC2007
-- [x] TensroBoard support
-- [x] Evaluation
+Check [this issue](https://github.com/adityaarun1/faster_rcnn_pytorch/issues/1) for the updated progress tracking.
 
 ### Installation and demo
 0. Install the requirements (you can use pip or [Anaconda](https://www.continuum.io/downloads)):
