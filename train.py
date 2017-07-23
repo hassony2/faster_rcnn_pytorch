@@ -45,7 +45,7 @@ lr_decay = 1./10
 
 rand_seed = 1024
 _DEBUG = True
-use_tensorboard = True
+use_tensorboard = False
 remove_all_log = False   # remove all historical experiments in TensorBoard
 exp_name = None # the previous experiment name in TensorBoard
 
@@ -169,7 +169,7 @@ for step in range(start_step, end_step+1):
     if (step % 10000 == 0) and step > 0:
         save_name = os.path.join(output_dir, 'faster_rcnn_{}.h5'.format(step))
         network.save_net(save_name, net)
-        print('save model: {}'.format(save_name))
+        print(('save model: {}'.format(save_name)))
     if step in lr_decay_steps:
         lr *= lr_decay
         optimizer = torch.optim.SGD(params[8:], lr=lr, momentum=momentum, weight_decay=weight_decay)
