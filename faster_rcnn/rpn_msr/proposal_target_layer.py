@@ -83,14 +83,14 @@ def proposal_target_layer(rpn_rois, gt_boxes, gt_ishard, dontcare_areas, _num_cl
     if DEBUG:
         if _count == 1:
             _fg_num, _bg_num = 0, 0
-        print 'num fg: {}'.format((labels > 0).sum())
-        print 'num bg: {}'.format((labels == 0).sum())
+        print('num fg: {}'.format((labels > 0).sum()))
+        print('num bg: {}'.format((labels == 0).sum()))
         _count += 1
         _fg_num += (labels > 0).sum()
         _bg_num += (labels == 0).sum()
-        print 'num fg avg: {}'.format(_fg_num / _count)
-        print 'num bg avg: {}'.format(_bg_num / _count)
-        print 'ratio: {:.3f}'.format(float(_fg_num) / float(_bg_num))
+        print('num fg avg: {}'.format(_fg_num / _count))
+        print('num bg avg: {}'.format(_bg_num / _count))
+        print('ratio: {:.3f}'.format(float(_fg_num) / float(_bg_num)))
 
     rois = rois.reshape(-1, 5)
     labels = labels.reshape(-1, 1)
@@ -130,10 +130,10 @@ def _sample_rois(all_rois, gt_boxes, gt_ishard, dontcare_areas, fg_rois_per_imag
                                     np.where(hard_max_overlaps >= cfg.TRAIN.FG_THRESH)[0])
             if DEBUG:
                 if ignore_inds.size > 1:
-                    print 'num hard: {:d}:'.format(ignore_inds.size)
-                    print 'hard box:', gt_hardboxes
-                    print 'rois: '
-                    print all_rois[ignore_inds]
+                    print('num hard: {:d}:'.format(ignore_inds.size))
+                    print('hard box:', gt_hardboxes)
+                    print('rois: ')
+                    print(all_rois[ignore_inds])
 
     # preclude dontcare areas
     if dontcare_areas is not None and dontcare_areas.shape[0] > 0:
@@ -157,6 +157,7 @@ def _sample_rois(all_rois, gt_boxes, gt_ishard, dontcare_areas, fg_rois_per_imag
     # Guard against the case when an image has fewer than fg_rois_per_image
     # foreground RoIs
     fg_rois_per_this_image = min(fg_rois_per_image, fg_inds.size)
+    fg_rois_per_this_image = int(fg_rois_per_this_image)
     # Sample foreground regions without replacement
     if fg_inds.size > 0:
         fg_inds = npr.choice(fg_inds, size=fg_rois_per_this_image, replace=False)
@@ -169,6 +170,7 @@ def _sample_rois(all_rois, gt_boxes, gt_ishard, dontcare_areas, fg_rois_per_imag
     # against there being fewer than desired)
     bg_rois_per_this_image = rois_per_image - fg_rois_per_this_image
     bg_rois_per_this_image = min(bg_rois_per_this_image, bg_inds.size)
+    bg_rois_per_this_image = int(bg_rois_per_this_image)
     # Sample background regions without replacement
     if bg_inds.size > 0:
         bg_inds = npr.choice(bg_inds, size=bg_rois_per_this_image, replace=False)
