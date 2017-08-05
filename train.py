@@ -1,3 +1,16 @@
+'''
+========TO-DO========
+[x] Use Visdom instead of Tensorboard
+[ ] Write all training code in a train function and call that
+    function from main
+[ ] Incorporate resume capability, also add this for visdom
+[ ] Better format the output, make them more informative
+[ ] Use command line argument to parse the configuration rather
+    than using CFG file
+[ ] Code Clean-Up
+'''
+#-----------------
+
 import os
 import torch
 import numpy as np
@@ -12,24 +25,19 @@ from faster_rcnn.roi_data_layer.layer import RoIDataLayer
 from faster_rcnn.datasets.factory import get_imdb
 from faster_rcnn.fast_rcnn.config import cfg, cfg_from_file
 
+# >>> remove termcolor dependency,
+#     better format the output
 try:
     from termcolor import cprint
 except ImportError:
     cprint = None
-
-try:
-    from pycrayon import CrayonClient
-except ImportError:
-    CrayonClient = None
-
 
 def log_print(text, color=None, on_color=None, attrs=None):
     if cprint is not None:
         cprint(text, color=color, on_color=on_color, attrs=attrs)
     else:
         print(text)
-
-
+# <<<
 
 # hyper-parameters
 # ------------
@@ -45,9 +53,20 @@ lr_decay = 1./10
 
 rand_seed = 1024
 _DEBUG = True
-use_tensorboard = False
-remove_all_log = False   # remove all historical experiments in TensorBoard
-exp_name = None # the previous experiment name in TensorBoard
+
+# >>> redundant tensorboard dependecies; remove them.
+# use_tensorboard = False
+# remove_all_log = False   # remove all historical experiments in TensorBoard
+# exp_name = None # the previous experiment name in TensorBoard
+# <<<
+
+use_visdom = True
+port_id = 8990      # port-id for visdom
+
+try:
+    import visdom
+except ImportError:
+    use_visdom = False
 
 # ------------
 
@@ -61,6 +80,43 @@ momentum = cfg.TRAIN.MOMENTUM
 weight_decay = cfg.TRAIN.WEIGHT_DECAY
 disp_interval = cfg.TRAIN.DISPLAY
 log_interval = cfg.TRAIN.LOG_IMAGE_ITERS
+
+# visdom: Initialize all the plots
+if use_visdom:
+    viz = visdom.Visdom(port=port_id)
+    log_print('Visdom hosted on port {:d}'.format(port_id))
+    faster_rcnn_plot = viz.line(
+            X = torch.zeros((1,)).cpu(),
+            Y = torch.zeros((1,3)).cpu(),
+            opts = dict(
+                xlabel = 'Iteration',
+                ylabel = 'Loss',
+                title = 'Current FasterRCNN Loss',
+                legend = ['RPN Loss', 'Fast RCNN Loss', 'Faster RCNN Loss']
+                )
+        )
+    if _DEBUG:
+        fast_rcnn_plot = viz.line(
+                    X = torch.zeros((1,)).cpu(),
+                    Y = torch.zeros((1,3)).cpu(),
+                    opts = dict(
+                            xlabel = 'Iteration',
+                            ylabel = 'Loss',
+                            title = 'Current FastRCNN Loss',
+                            legend = ['cls loss', 'bb_reg loss', 'fast_rcnn loss']
+                            )
+                )
+        rpn_plot = viz.line(
+                    X = torch.zeros((1,)).cpu(),
+                    Y = torch.zeros((1,3)).cpu(),
+                    opts = dict(
+                            xlabel = 'Iteration',
+                            ylabel = 'Loss',
+                            title = 'Current RPN Loss',
+                            legend = ['cls loss', 'bb_reg loss', 'total loss']
+                            )
+                )
+
 
 # load data
 imdb = get_imdb(imdb_name)
@@ -89,18 +145,6 @@ optimizer = torch.optim.SGD(params[8:], lr=lr, momentum=momentum, weight_decay=w
 
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
-
-# tensorboad
-use_tensorboard = use_tensorboard and CrayonClient is not None
-if use_tensorboard:
-    cc = CrayonClient(hostname='127.0.0.1')
-    if remove_all_log:
-        cc.remove_all_experiments()
-    if exp_name is None:
-        exp_name = datetime.now().strftime('vgg16_%m-%d_%H-%M')
-        exp = cc.create_experiment(exp_name)
-    else:
-        exp = cc.open_experiment(exp_name)
 
 # training
 train_loss = 0
@@ -154,17 +198,32 @@ for step in range(start_step, end_step+1):
             )
         re_cnt = True
 
-    if use_tensorboard and step % log_interval == 0:
-        exp.add_scalar_value('train_loss', train_loss / step_cnt, step=step)
-        exp.add_scalar_value('learning_rate', lr, step=step)
+    # Plot on Visdom
+    if use_visdom and (step % log_interval == 0):
+        # Plot Faster RCNN Loss
+        viz.line(
+            X = torch.ones((1,3)).cpu() * step,
+            Y = torch.Tensor([net.rpn.loss.data[0], net.loss.data[0], loss.data[0]]).unsqueeze(0),
+            win = faster_rcnn_plot,
+            update = 'append'
+        )
         if _DEBUG:
-            exp.add_scalar_value('true_positive', tp/fg*100., step=step)
-            exp.add_scalar_value('true_negative', tf/bg*100., step=step)
-            losses = {'rpn_cls': float(net.rpn.cross_entropy.data.cpu().numpy()[0]),
-                      'rpn_box': float(net.rpn.loss_box.data.cpu().numpy()[0]),
-                      'rcnn_cls': float(net.cross_entropy.data.cpu().numpy()[0]),
-                      'rcnn_box': float(net.loss_box.data.cpu().numpy()[0])}
-            exp.add_scalar_dict(losses, step=step)
+            # Plot Fast RCNN Loss
+            viz.line(
+                X = torch.ones((1,3)).cpu() * step,
+                Y = torch.Tensor([net.cross_entropy.data[0], net.loss_box.data[0],
+                             net.loss.data[0]]).unsqueeze(0),
+                win = fast_rcnn_plot,
+                update = 'append'
+            )
+            # Plot RPN Loss
+            viz.line(
+                X = torch.ones((1,3)).cpu() * step,
+                Y = torch.Tensor([net.rpn.cross_entropy.data[0], net.rpn.loss_box.data[0],
+                                 net.rpn.loss.data[0]]).unsqueeze(0),
+                win = rpn_plot,
+                update = 'append'
+            )
 
     if (step % 10000 == 0) and step > 0:
         save_name = os.path.join(output_dir, 'faster_rcnn_{}.h5'.format(step))
