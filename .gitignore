@@ -91,10 +91,17 @@ ENV/
 # Rope project settings
 .ropeproject
 
+# Vim swap files
+*.swo
+*.swp
+*.swn
+
 .idea
 extension-ffi
 demo_mot.py
 *.o
-data/
+data
 models
 output
+demo
+checkpoints
