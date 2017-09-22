@@ -9,91 +9,42 @@ import os
 import os.path as osp
 import PIL
 import numpy as np
-import scipy.sparse
+from torch.utils.data import Dataset
 
 from ..utils.cython_bbox import bbox_overlaps
 
-# TODO: make fast_rcnn irrelevant
-# >>>> obsolete, because it depends on sth outside of this project
-from ..fast_rcnn.config import cfg
 
-# <<<< obsolete
-
-ROOT_DIR = osp.join(osp.dirname(__file__), '..', '..')
-MATLAB = 'matlab_r2013b'
-
-
-class imdb(object):
+class HandDetectionDataset(Dataset):
     """Image database."""
 
-    def __init__(self, name):
-        self._name = name
-        self._num_classes = 0
-        self._classes = []
-        self._image_index = []
+    def __init__(self, name, left_from_right=False):
+        self.name = name
+        self.left_from_right = left_from_right
+        if left_from_right:
+            self.classes = ['background', 'right_hand', 'left_hand']
+        else:
+            self.classes = ['background', 'hand']
+        self.num_classes = len(self.classes)
         self._obj_proposer = 'selective_search'
-        self._roidb = None
-        print(self.default_roidb)
-        self._roidb_handler = self.default_roidb
-        # Use this dict for storing dataset specific config options
-        self.config = {}
 
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def num_classes(self):
-        return len(self._classes)
-
-    @property
-    def classes(self):
-        return self._classes
-
-    @property
-    def image_index(self):
-        return self._image_index
-
-    @property
-    def roidb_handler(self):
-        return self._roidb_handler
-
-    @roidb_handler.setter
-    def roidb_handler(self, val):
-        self._roidb_handler = val
+        self.datadir = 'data'
+        # Matching lists of image paths and annotations
+        self.image_names = []
+        self.annotations = []
 
     def set_proposal_method(self, method):
         method = eval('self.' + method + '_roidb')
         self.roidb_handler = method
 
     @property
-    def roidb(self):
-        # A roidb is a list of dictionaries, each with the following keys:
-        #   boxes
-        #   gt_overlaps
-        #   gt_classes
-        #   flipped
-        if self._roidb is not None:
-            return self._roidb
-        self._roidb = self.roidb_handler()
-        return self._roidb
-
-    @property
     def cache_path(self):
-        cache_path = osp.abspath(osp.join(cfg.DATA_DIR, 'cache'))
+        cache_path = osp.abspath(osp.join(self.datadir, 'cache'))
         if not os.path.exists(cache_path):
             os.makedirs(cache_path)
         return cache_path
 
-    @property
-    def num_images(self):
-        return len(self.image_index)
-
-    def image_path_at(self, i):
-        raise NotImplementedError
-
-    def default_roidb(self):
-        raise NotImplementedError
+    def __len__(self):
+        return len(self.image_names)
 
     def evaluate_detections(self, all_boxes, output_dir=None):
         """
@@ -106,62 +57,65 @@ class imdb(object):
         """
         raise NotImplementedError
 
-    def _get_widths(self):
-        return [PIL.Image.open(self.image_path_at(i)).size[0]
-                for i in range(self.num_images)]
+    def flip_bboxes(self, img, annot):
+        """
+        Flips annot
 
-    def append_flipped_images(self):
-        num_images = self.num_images
-        widths = self._get_widths()
-        for i in range(num_images):
-            boxes = self.roidb[i]['boxes'].copy()
-            oldx1 = boxes[:, 0].copy()
-            oldx2 = boxes[:, 2].copy()
-            boxes[:, 0] = widths[i] - oldx2 - 1
-            boxes[:, 2] = widths[i] - oldx1 - 1
-            assert (boxes[:, 2] >= boxes[:, 0]).all()
-            entry = {'boxes': boxes,
-                     'gt_overlaps': self.roidb[i]['gt_overlaps'],
-                     'gt_classes': self.roidb[i]['gt_classes'],
-                     'flipped': True}
+        Args:
+        img: PIL image
+        annot: dict with keys boxes, gt_overlaps, gt_classes, flipped
+        """
+        width = img.size[0]
+        boxes = annot['boxes'].copy()
+        oldx1 = boxes[:, 0].copy()
+        oldx2 = boxes[:, 2].copy()
+        boxes[:, 0] = width - oldx2 - 1
+        boxes[:, 2] = width - oldx1 - 1
+        assert (boxes[:, 2] >= boxes[:, 0]).all()
+        flipped_annot = {
+            'boxes': boxes,
+            'gt_overlaps': annot['gt_overlaps'],
+            'gt_classes': annot['gt_classes'],
+            'flipped': True
+        }
+        return flipped_annot
 
-            if 'gt_ishard' in self.roidb[i] and 'dontcare_areas' in self.roidb[i]:
-                entry['gt_ishard'] = self.roidb[i]['gt_ishard'].copy()
-                dontcare_areas = self.roidb[i]['dontcare_areas'].copy()
-                oldx1 = dontcare_areas[:, 0].copy()
-                oldx2 = dontcare_areas[:, 2].copy()
-                dontcare_areas[:, 0] = widths[i] - oldx2 - 1
-                dontcare_areas[:, 2] = widths[i] - oldx1 - 1
-                entry['dontcare_areas'] = dontcare_areas
-
-            self.roidb.append(entry)
-
-        self._image_index = self._image_index * 2
-
-    def evaluate_recall(self, candidate_boxes=None, thresholds=None,
-                        area='all', limit=None):
+    def evaluate_recall(self,
+                        candidate_boxes=None,
+                        thresholds=None,
+                        area='all',
+                        limit=None):
         """Evaluate detection proposal recall metrics.
 
         Returns:
-            results: dictionary of results with keys
-                'ar': average recall
-                'recalls': vector recalls at each IoU overlap threshold
-                'thresholds': vector of IoU overlap thresholds
-                'gt_overlaps': vector of all ground-truth overlaps
+        results: dictionary of results with keys
+        'ar': average recall
+        'recalls': vector recalls at each IoU overlap threshold
+        'thresholds': vector of IoU overlap thresholds
+        'gt_overlaps': vector of all ground-truth overlaps
         """
         # Record max overlap value for each gt box
         # Return vector of overlap values
-        areas = {'all': 0, 'small': 1, 'medium': 2, 'large': 3,
-                 '96-128': 4, '128-256': 5, '256-512': 6, '512-inf': 7}
-        area_ranges = [[0 ** 2, 1e5 ** 2],  # all
-                       [0 ** 2, 32 ** 2],  # small
-                       [32 ** 2, 96 ** 2],  # medium
-                       [96 ** 2, 1e5 ** 2],  # large
-                       [96 ** 2, 128 ** 2],  # 96-128
-                       [128 ** 2, 256 ** 2],  # 128-256
-                       [256 ** 2, 512 ** 2],  # 256-512
-                       [512 ** 2, 1e5 ** 2],  # 512-inf
-                       ]
+        areas = {
+            'all': 0,
+            'small': 1,
+            'medium': 2,
+            'large': 3,
+            '96-128': 4,
+            '128-256': 5,
+            '256-512': 6,
+            '512-inf': 7
+        }
+        area_ranges = [
+            [0**2, 1e5**2],  # all
+            [0**2, 32**2],  # small
+            [32**2, 96**2],  # medium
+            [96**2, 1e5**2],  # large
+            [96**2, 128**2],  # 96-128
+            [128**2, 256**2],  # 128-256
+            [256**2, 512**2],  # 256-512
+            [512**2, 1e5**2],  # 512-inf
+        ]
         assert area in areas, 'unknown area range: {}'.format(area)
         area_range = area_ranges[areas[area]]
         gt_overlaps = np.zeros(0)
@@ -169,7 +123,8 @@ class imdb(object):
         for i in range(self.num_images):
             # Checking for max_overlaps == 1 avoids including crowd annotations
             # (...pretty hacking :/)
-            max_gt_overlaps = self.roidb[i]['gt_overlaps'].toarray().max(axis=1)
+            max_gt_overlaps = self.roidb[i]['gt_overlaps'].toarray().max(
+                axis=1)
             gt_inds = np.where((self.roidb[i]['gt_classes'] > 0) &
                                (max_gt_overlaps == 1))[0]
             gt_boxes = self.roidb[i]['boxes'][gt_inds, :]
@@ -191,8 +146,8 @@ class imdb(object):
             if limit is not None and boxes.shape[0] > limit:
                 boxes = boxes[:limit, :]
 
-            overlaps = bbox_overlaps(boxes.astype(np.float),
-                                     gt_boxes.astype(np.float))
+            overlaps = bbox_overlaps(
+                boxes.astype(np.float), gt_boxes.astype(np.float))
 
             _gt_overlaps = np.zeros((gt_boxes.shape[0]))
             for j in range(gt_boxes.shape[0]):
@@ -225,51 +180,74 @@ class imdb(object):
             recalls[i] = (gt_overlaps >= t).sum() / float(num_pos)
         # ar = 2 * np.trapz(recalls, thresholds)
         ar = recalls.mean()
-        return {'ar': ar, 'recalls': recalls, 'thresholds': thresholds,
-                'gt_overlaps': gt_overlaps}
+        return {
+            'ar': ar,
+            'recalls': recalls,
+            'thresholds': thresholds,
+            'gt_overlaps': gt_overlaps
+        }
 
-    def create_roidb_from_box_list(self, box_list, gt_roidb):
-        assert len(box_list) == self.num_images, \
-            'Number of boxes must match number of ground-truth images'
-        roidb = []
-        for i in range(self.num_images):
-            boxes = box_list[i]
-            num_boxes = boxes.shape[0]
-            overlaps = np.zeros((num_boxes, self.num_classes), dtype=np.float32)
+    def enrich_annots(self):
+        """Enrich the annotation list by adding some derived quantities that
+        are useful for training. This function precomputes the maximum
+        overlap, taken over ground-truth boxes, between each ROI and
+        each ground-truth box. The class with maximum overlap is also
+        recorded.
+        """
+        img_paths = self.image_names
+        sizes = [PIL.Image.open(img_path).size for img_path in img_paths]
+        for i in range(len(img_paths)):
+            self.annotations[i]['image'] = img_paths[i]
+            self.annotations[i]['width'] = sizes[i][0]
+            self.annotations[i]['height'] = sizes[i][1]
 
-            if gt_roidb is not None and gt_roidb[i]['boxes'].size > 0:
-                gt_boxes = gt_roidb[i]['boxes']
-                gt_classes = gt_roidb[i]['gt_classes']
-                gt_overlaps = bbox_overlaps(boxes.astype(np.float),
-                                            gt_boxes.astype(np.float))
-                argmaxes = gt_overlaps.argmax(axis=1)
-                maxes = gt_overlaps.max(axis=1)
-                I = np.where(maxes > 0)[0]
-                overlaps[I, gt_classes[argmaxes[I]]] = maxes[I]
+            gt_overlaps = self.annotations[i]['gt_overlaps']
 
-            overlaps = scipy.sparse.csr_matrix(overlaps)
-            roidb.append({
-                'boxes': boxes,
-                'gt_classes': np.zeros((num_boxes,), dtype=np.int32),
-                'gt_overlaps': overlaps,
-                'flipped': False,
-                'seg_areas': np.zeros((num_boxes,), dtype=np.float32),
-            })
-        return roidb
+            # max overlap with gt over classes (columns)
+            max_overlaps = gt_overlaps.max(axis=1)
 
-    @staticmethod
-    def merge_roidbs(a, b):
-        assert len(a) == len(b)
-        for i in range(len(a)):
-            a[i]['boxes'] = np.vstack((a[i]['boxes'], b[i]['boxes']))
-            a[i]['gt_classes'] = np.hstack((a[i]['gt_classes'],
-                                            b[i]['gt_classes']))
-            a[i]['gt_overlaps'] = scipy.sparse.vstack([a[i]['gt_overlaps'],
-                                                       b[i]['gt_overlaps']])
-            a[i]['seg_areas'] = np.hstack((a[i]['seg_areas'],
-                                           b[i]['seg_areas']))
-        return a
+            # gt class that had the max overlap
+            max_classes = gt_overlaps.argmax(axis=1)
+            self.annotations[i]['max_classes'] = max_classes
+            self.annotations[i]['max_overlaps'] = max_overlaps
+            # sanity checks
+            # max overlap of 0 => class should be zero (background)
+            zero_inds = np.where(max_overlaps == 0)[0]
+            assert all(max_classes[zero_inds] == 0)
+            # max overlap > 0 => class should not be zero (must be a fg class)
+            nonzero_inds = np.where(max_overlaps > 0)[0]
+            if not all(max_classes[nonzero_inds] != 0):
+                import pdb
+                pdb.set_trace()
+            assert all(max_classes[nonzero_inds] != 0)
 
-    def competition_mode(self, on):
-        """Turn competition mode on or off."""
-        pass
+
+def concat_datasets(dataset_list):
+    """Returns new dataset that is a combination of the listed datasets
+
+    Args:
+    dataset_list (list): list of datasets to concatenate
+    """
+    left_from_rights = [dataset.left_from_right for dataset in dataset_list]
+    assert_string = 'all left_from_rights statemeent should be the same\
+    but got'.format(left_from_rights)
+
+    assert all(flag == left_from_rights[0]
+               for flag in left_from_rights), assert_string
+    dataset_name = '_'.join([dataset.name for dataset in dataset_list])
+    all_dataset = HandDetectionDataset(
+        dataset_name, left_from_right=left_from_rights[0])
+    all_dataset.image_names = [
+        img_path for dataset in dataset_list
+        for img_path in dataset.image_names
+    ]
+    all_dataset.annotations = [
+        annot for dataset in dataset_list for annot in dataset.annotations
+    ]
+    assert_string = 'Annotations and image paths should be of same lenght after dataset\
+        concat but are {} and {}'
+
+    assert_string = assert_string.format(
+        len(all_dataset.image_names), len(all_dataset.annotations))
+    assert len(all_dataset.image_names) == len(all_dataset.annotations)
+    return all_dataset

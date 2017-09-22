@@ -12,7 +12,7 @@ from faster_rcnn.fast_rcnn.nms_wrapper import nms
 from faster_rcnn.fast_rcnn.bbox_transform import bbox_transform_inv, clip_boxes
 from faster_rcnn.datasets.factory import get_imdb
 from faster_rcnn.fast_rcnn.config import cfg, cfg_from_file, get_output_dir
-
+from faster_rcnn.datasets.lisa_hd import LISADataset
 
 # hyper-parameters
 # ------------
@@ -47,8 +47,12 @@ def vis_detections(im, class_name, dets, thresh=0.8):
         score = dets[i, -1]
         if score > thresh:
             cv2.rectangle(im, bbox[0:2], bbox[2:4], (0, 204, 0), 2)
-            cv2.putText(im, '%s: %.3f' % (class_name, score), (bbox[0], bbox[1] + 15), cv2.FONT_HERSHEY_PLAIN,
-                        1.0, (0, 0, 255), thickness=1)
+            cv2.putText(
+                im,
+                '%s: %.3f' % (class_name, score), (bbox[0], bbox[1] + 15),
+                cv2.FONT_HERSHEY_PLAIN,
+                1.0, (0, 0, 255),
+                thickness=1)
     return im
 
 
@@ -62,8 +66,7 @@ def im_detect(net, image):
 
     im_data, im_scales = net.get_image_blob(image)
     im_info = np.array(
-        [[im_data.shape[1], im_data.shape[2], im_scales[0]]],
-        dtype=np.float32)
+        [[im_data.shape[1], im_data.shape[2], im_scales[0]]], dtype=np.float32)
 
     cls_prob, bbox_pred, rois = net(im_data, im_info)
     scores = cls_prob.data.cpu().numpy()
@@ -123,8 +126,8 @@ def test_net(name, net, imdb, max_per_image=300, thresh=0.05, vis=False):
 
         # Limit to max_per_image detections *over all classes*
         if max_per_image > 0:
-            image_scores = np.hstack([all_boxes[j][i][:, -1]
-                                      for j in range(1, imdb.num_classes)])
+            image_scores = np.hstack(
+                [all_boxes[j][i][:, -1] for j in range(1, imdb.num_classes)])
             if len(image_scores) > max_per_image:
                 image_thresh = np.sort(image_scores)[-max_per_image]
                 for j in range(1, imdb.num_classes):
