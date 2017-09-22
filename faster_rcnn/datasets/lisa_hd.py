@@ -10,9 +10,12 @@ from faster_rcnn.datasets.imdb import HandDetectionDataset
 
 
 class LISADataset(HandDetectionDataset):
-    def __init__(self, split, transform=None,
+    def __init__(self,
+                 split,
+                 transform=None,
                  transform_params=None,
-                 use_cache=False, left_from_right=False):
+                 use_cache=False,
+                 left_from_right=False):
         """
         Args:
             split (str): eighter test or train
@@ -23,8 +26,8 @@ class LISADataset(HandDetectionDataset):
                 'exposure', 'saturation'}
         """
 
-        super(LISADataset, self).__init__('lisa_' + split,
-                                          left_from_right=left_from_right)
+        super(LISADataset, self).__init__(
+            'lisa_' + split, left_from_right=left_from_right)
         self.split = split
         self.use_cache = use_cache
         self.transform = transform
@@ -37,9 +40,9 @@ class LISADataset(HandDetectionDataset):
         self._img_folder = os.path.join(self._split_path, 'pos')
         self._annot_folder = os.path.join(self._split_path, 'posGt')
         assert os.path.exists(
-            self._data_path), 'Path does not exist: {}'.format(self._data_path)
-        assert os.path.exists(
-            self._split_path), 'Split path does not exist:\
+            self._data_path), 'Path does not exist: {}'.format(
+                self._data_path)
+        assert os.path.exists(self._split_path), 'Split path does not exist:\
             {}'.format(self._split_path)
 
         self.num_classes = len(self.classes)
@@ -49,11 +52,13 @@ class LISADataset(HandDetectionDataset):
 
     def load_dataset(self):
         img_files = sorted(os.listdir(self._img_folder))
-        img_paths = [os.path.join(self._img_folder, img_file)
-                     for img_file in img_files]
-        annot_paths = [os.path.join(self._annot_folder,
-                                    img_file.split('.')[0] + '.txt')
-                       for img_file in img_files]
+        img_paths = [
+            os.path.join(self._img_folder, img_file) for img_file in img_files
+        ]
+        annot_paths = [
+            os.path.join(self._annot_folder, img_file.split('.')[0] + '.txt')
+            for img_file in img_files
+        ]
         self.image_names = img_paths
         self.annot_paths = annot_paths
         self.sample_nb = len(self.image_names)
@@ -71,12 +76,12 @@ class LISADataset(HandDetectionDataset):
         if os.path.exists(cache_file) and self.use_cache:
             with open(cache_file, 'rb') as fid:
                 roidb = pickle.load(fid)
-            print('{} gt roidb loaded from {}'.format(self.name,
-                                                      cache_file))
+            print('{} gt roidb loaded from {}'.format(self.name, cache_file))
             return roidb
 
-        gt_roidb = [self._annotation_from_index(index)
-                    for index in self.image_indexes]
+        gt_roidb = [
+            self._annotation_from_index(index) for index in self.image_indexes
+        ]
         with open(cache_file, 'wb') as fid:
             pickle.dump(gt_roidb, fid, pickle.HIGHEST_PROTOCOL)
         print('wrote gt roidb to {}'.format(cache_file))
@@ -113,8 +118,8 @@ class LISADataset(HandDetectionDataset):
         """
         annot_path = self.annot_paths[index]
         # Bounding box as [x_min, y_min, width, height]
-        bounding_boxes = np.loadtxt(annot_path, usecols=[1, 2, 3, 4],
-                                    skiprows=1)
+        bounding_boxes = np.loadtxt(
+            annot_path, usecols=[1, 2, 3, 4], skiprows=1)
         if bounding_boxes.ndim == 1:
             bounding_boxes = np.expand_dims(bounding_boxes, axis=0)
         num_objs = bounding_boxes.shape[0]
@@ -130,7 +135,9 @@ class LISADataset(HandDetectionDataset):
             gt_classes[ix] = cls_idx
             gt_overlaps[ix, cls_idx] = 1
 
-        return {'boxes': bounding_boxes,
-                'gt_classes': gt_classes,
-                'gt_overlaps': gt_overlaps,
-                'flipped': False}
+        return {
+            'boxes': bounding_boxes,
+            'gt_classes': gt_classes,
+            'gt_overlaps': gt_overlaps,
+            'flipped': False
+        }

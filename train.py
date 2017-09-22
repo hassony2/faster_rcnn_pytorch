@@ -14,9 +14,9 @@ from faster_rcnn.utils.timer import Timer
 
 from faster_rcnn.roi_data_layer.layer import RoIDataLayer
 from faster_rcnn.fast_rcnn.config import cfg, cfg_from_file
+from faster_rcnn.datasets.egohands import EgoHandDataset
 from faster_rcnn.datasets.lisa_hd import LISADataset
 from faster_rcnn.datasets.imdb import concat_datasets
-from faster_rcnn.datasets.egohands import EgoHandDataset
 from faster_rcnn.scripttools import cmdutils
 '''
 ========TO-DO========
@@ -46,13 +46,12 @@ parser.add_argument(
 
 # Visdom arguments
 parser.add_argument(
-    '--visdom', action="store_false", help="Whether to visualize using visdom")
+    '--no_visdom', action="store_true", help="Deactivate visdom")
 parser.add_argument(
     '--visdom_port_id',
     type=int,
     default='8990',
-    help="Number of the port to use for visdome")
-port_id = 8990  # port-id for visdom
+    help="Number of the port to use for visdom")
 args = parser.parse_args()
 # Print options
 opts = vars(args)
@@ -100,9 +99,10 @@ disp_interval = cfg.TRAIN.DISPLAY
 log_interval = cfg.TRAIN.LOG_IMAGE_ITERS
 
 # visdom: Initialize all the plots
-if args.visdom:
-    viz = visdom.Visdom(port=port_id)
-    cmdutils.log_print('Visdom hosted on port {:d}'.format(port_id))
+if not args.no_visdom:
+    viz = visdom.Visdom(port=args.visdom_port_id)
+    cmdutils.log_print(
+        'Visdom hosted on port {:d}'.format(args.visdom_port_id))
     faster_rcnn_plot = viz.line(
         X=torch.zeros((1, )).cpu(),
         Y=torch.zeros((1, 3)).cpu(),
@@ -244,7 +244,7 @@ for step in range(start_step, end_step + 1):
         re_cnt = True
 
     # Plot on Visdom
-    if args.visdom and (step % log_interval == 0):
+    if not args.no_visdom and (step % log_interval == 0):
         # Plot Faster RCNN Loss
         viz.line(
             X=torch.ones((1, 3)).cpu() * step,
